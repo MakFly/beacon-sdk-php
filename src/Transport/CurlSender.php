@@ -15,13 +15,13 @@ final class CurlSender implements SenderInterface
     private readonly string $token;
 
     /**
-     * @param non-empty-string $endpoint Ingester base URL, e.g. https://beacon.iautos.fr
-     * @param non-empty-string $token    Project API token
+     * @param string $endpoint Ingester base URL, e.g. https://beacon.iautos.fr (empty = disabled)
+     * @param string $token    Project API token (empty = disabled)
      */
     public function __construct(
         private readonly string $endpoint,
         string $token,
-        private readonly string $sdk = 'php/0.1.1',
+        private readonly string $sdk = 'php/0.2.0',
         private readonly float $timeout = 2.0,
     ) {
         $this->token = preg_replace('/[\r\n]/', '', $token) ?? $token;
@@ -29,7 +29,7 @@ final class CurlSender implements SenderInterface
 
     public function send(string $endpoint, array $payloads): void
     {
-        if ($payloads === [] || !\function_exists('curl_init')) {
+        if ($this->endpoint === '' || $payloads === [] || !\function_exists('curl_init')) {
             return;
         }
 

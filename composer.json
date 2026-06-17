@@ -31,6 +31,7 @@
             "KevStudios\\Beacon\\Tests\\": "tests/"
         }
     },
+    "bin": ["bin/setup"],
     "config": {
         "sort-packages": true
     },

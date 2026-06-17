@@ -4,42 +4,73 @@ Beacon telemetry SDK for **PHP / Symfony 8** — errors, traces, logs. Home-grow
 **zero external instrumentation dependency** (no `open-telemetry/*`, no `sentry/*`).
 Ships as a Symfony bundle; the PHP namespace is `KevStudios\Beacon\`.
 
+## Install
+
 ```bash
 composer require makfly/beacon-sdk-php
+php vendor/makfly/beacon-sdk-php/bin/setup
 ```
 
-> Before the package is on Packagist, add a VCS repository to your `composer.json`:
+The setup script auto-configures your Symfony project (idempotent, safe to re-run):
+
+- `config/bundles.php` — registers `BeaconBundle` for all environments
+- `config/packages/beacon.yaml` — creates the config with safe defaults
+- `.env` / `.env.example` — appends `BEACON_ENDPOINT` and `BEACON_TOKEN`
+
+**That's it.** By default the SDK is a silent no-op — zero network calls, zero overhead.
+Set the env vars to activate:
+
+```dotenv
+# .env.local
+BEACON_ENDPOINT=https://beacon.example.com
+BEACON_TOKEN=priv_my_project
+```
+
+> Before the package is on Packagist, add a VCS repository:
 > ```json
 > "repositories": [{ "type": "vcs", "url": "https://github.com/MakFly/beacon-sdk-php.git" }]
 > ```
 
-## Symfony setup
+## How it works
 
-**1. Register the bundle** — `config/bundles.php`:
+| Env vars set? | Behavior |
+|---|---|
+| Both set | Errors, traces and logs are sent to the ingester |
+| Empty or absent | Silent no-op — no cURL, no overhead |
 
-```php
-KevStudios\Beacon\Symfony\BeaconBundle::class => ['dev' => true, 'prod' => true],
-```
+Unhandled kernel exceptions are captured automatically via `ExceptionSubscriber`.
+The buffer flushes on `kernel.terminate` (post-response). The transport swallows
+every failure — telemetry never breaks the host app.
 
-> `dev`+`prod` only (not `test`) keeps your test suite free of outbound telemetry calls.
+## Configuration
 
-**2. Configure** — `config/packages/beacon.yaml`:
+All options in `config/packages/beacon.yaml` (with defaults):
 
 ```yaml
-when@dev: &beacon
-    beacon:
-        endpoint: '%env(BEACON_ENDPOINT)%'   # required — ingester base URL
-        token:    '%env(BEACON_TOKEN)%'      # required — project token
-        service_name: 'my-app'               # optional
-when@prod: *beacon
+parameters:
+    # Default to empty STRING when the env var is unset (prod with no ingester yet).
+    # Critical: CurlSender expects a `string` — '' constructs + silently no-ops, whereas
+    # `null` (what `%env(default::...)%` returns) throws a TypeError at boot → 500 → rollback.
+    env(BEACON_ENDPOINT): ''
+    env(BEACON_TOKEN): ''
+
+beacon:
+    endpoint: '%env(BEACON_ENDPOINT)%'            # ingester URL (empty = disabled)
+    token: '%env(BEACON_TOKEN)%'                  # project token (empty = disabled)
+    service_name: 'iautos-api'                    # optional
+    service_version: ~                            # optional (null)
+    stage: '%kernel.environment%'                 # optional
+    application_path: '%kernel.project_dir%'      # optional
+    collect_arguments: true                       # capture exception arguments
+    traces_sample_rate: 1.0                       # 0.0–1.0
+    censor_keys:                                  # scrubbed from attributes
+        - password
+        - authorization
+        - cookie
+        - token
+        - secret
+        - api_key
 ```
-
-Other options (with defaults): `service_version` (null), `stage` (`%kernel.environment%`),
-`application_path` (`%kernel.project_dir%`), `collect_arguments` (true),
-`traces_sample_rate` (1.0), `censor_keys` (`password, authorization, cookie, token, secret, api_key`).
-
-Unhandled kernel exceptions are captured automatically; the buffer flushes on `kernel.terminate`.
-The transport swallows every failure — telemetry never breaks the host app.
 
 ## Versioning & release
 

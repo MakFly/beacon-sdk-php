@@ -17,8 +17,8 @@ final class Configuration implements ConfigurationInterface
         // @phpstan-ignore-next-line fluent config builder
         $root
             ->children()
-                ->scalarNode('endpoint')->isRequired()->cannotBeEmpty()->info('Beacon ingester base URL')->end()
-                ->scalarNode('token')->isRequired()->cannotBeEmpty()->info('Project API token')->end()
+                ->scalarNode('endpoint')->defaultValue('')->info('Beacon ingester base URL (empty = disabled)')->end()
+                ->scalarNode('token')->defaultValue('')->info('Project API token (empty = disabled)')->end()
                 ->scalarNode('service_name')->defaultValue('iautos-api')->end()
                 ->scalarNode('service_version')->defaultNull()->end()
                 ->scalarNode('stage')->defaultValue('%kernel.environment%')->end()

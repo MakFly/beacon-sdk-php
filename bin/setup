@@ -1,0 +1,180 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Beacon SDK — auto-setup for Symfony projects.
+ *
+ * Run after `composer require makfly/beacon-sdk-php`:
+ *   php vendor/makfly/beacon-sdk-php/bin/setup
+ *
+ * Or via Composer bin:
+ *   vendor/bin/beacon-setup
+ *
+ * Idempotent — safe to run multiple times. Patches:
+ *   1. config/bundles.php  → registers BeaconBundle ['all' => true]
+ *   2. config/packages/beacon.yaml → creates with default config
+ *   3. .env → appends BEACON_ENDPOINT / BEACON_TOKEN vars
+ */
+
+$projectRoot = findProjectRoot();
+if ($projectRoot === null) {
+    stderr("Could not detect Symfony project root (no config/bundles.php found).");
+    exit(1);
+}
+
+$changes = 0;
+$changes += patchBundles($projectRoot);
+$changes += createBeaconYaml($projectRoot);
+$changes += patchEnv($projectRoot, '.env');
+$changes += patchEnv($projectRoot, '.env.example');
+
+if ($changes === 0) {
+    info('Already configured — nothing to do.');
+} else {
+    info("Done. Set \033[33mBEACON_ENDPOINT\033[0m + \033[33mBEACON_TOKEN\033[0m in .env.local to enable.");
+}
+
+// ──────────────────────────────────────────────────────────────────────
+
+function findProjectRoot(): ?string
+{
+    // Walk up from CWD or from vendor/makfly/beacon-sdk-php/bin/
+    $candidates = [
+        getcwd(),
+        dirname(__DIR__, 4), // vendor/makfly/beacon-sdk-php/bin → project root
+    ];
+    foreach ($candidates as $dir) {
+        if (is_file($dir.'/config/bundles.php')) {
+            return $dir;
+        }
+    }
+    return null;
+}
+
+function patchBundles(string $root): int
+{
+    $file = $root.'/config/bundles.php';
+    $content = file_get_contents($file);
+
+    if (str_contains($content, 'BeaconBundle')) {
+        ok('config/bundles.php — BeaconBundle already registered.');
+        return 0;
+    }
+
+    // Insert before the closing "];" of the array.
+    $line = "    KevStudios\\Beacon\\Symfony\\BeaconBundle::class => ['all' => true],";
+    $content = preg_replace(
+        '/^(\s*)\];/m',
+        $line."\n$1];",
+        $content,
+        1,
+        $count,
+    );
+
+    if ($count === 0) {
+        stderr('config/bundles.php — could not find insertion point. Add BeaconBundle manually.');
+        return 0;
+    }
+
+    file_put_contents($file, $content);
+    ok('config/bundles.php — BeaconBundle registered.');
+    return 1;
+}
+
+function createBeaconYaml(string $root): int
+{
+    $file = $root.'/config/packages/beacon.yaml';
+
+    if (is_file($file)) {
+        ok('config/packages/beacon.yaml — already exists.');
+        return 0;
+    }
+
+    $yaml = implode("\n", [
+        '# Beacon telemetry (makfly/beacon-sdk-php).',
+        '# Auto-disabled when BEACON_ENDPOINT / BEACON_TOKEN env vars are empty.',
+        'parameters:',
+        "    # Défaut CHAÎNE VIDE quand la var d'env est absente (prod sans ingester déployé).",
+        "    # Critique : CurlSender attend un `string` — `''` construit + no-op silencieux (curl ignoré),",
+        "    # mais `null` (ce que renvoie `%env(default::...)%`) lève un TypeError au boot → 500 → rollback.",
+        "    env(BEACON_ENDPOINT): ''",
+        "    env(BEACON_TOKEN): ''",
+        '',
+        'beacon:',
+        "    # Ingester base URL (e.g. https://beacon.example.com). Empty = SDK disabled (silent no-op).",
+        "    endpoint: '%env(BEACON_ENDPOINT)%'",
+        "    # Project API token sent as X-Beacon-Token header. Empty = SDK disabled.",
+        "    token: '%env(BEACON_TOKEN)%'",
+        "    # Identifier for this service in the Beacon dashboard.",
+        "    service_name: 'my-app'",
+        '    # Deployed version tag (shown in error groups to track regressions). Null = not reported.',
+        '    service_version: ~',
+        '    # Environment label attached to every payload (production, staging, dev).',
+        "    stage: '%kernel.environment%'",
+        '    # Root path stripped from stacktrace frames to detect application vs vendor code.',
+        "    application_path: '%kernel.project_dir%'",
+        '    # Capture exception constructor/method arguments in stacktraces.',
+        '    collect_arguments: true',
+        '    # Fraction of requests that generate trace spans (0.0 = none, 1.0 = all).',
+        '    traces_sample_rate: 1.0',
+        '    # Attribute keys scrubbed to [CENSORED] before sending (case-insensitive).',
+        '    censor_keys:',
+        '        - password',
+        '        - authorization',
+        '        - cookie',
+        '        - token',
+        '        - secret',
+        '        - api_key',
+        '',
+    ]);
+
+    if (!is_dir(dirname($file))) {
+        mkdir(dirname($file), 0755, true);
+    }
+    file_put_contents($file, $yaml);
+    ok('config/packages/beacon.yaml — created.');
+    return 1;
+}
+
+function patchEnv(string $root, string $filename): int
+{
+    $file = $root.'/'.$filename;
+
+    if (!is_file($file)) {
+        return 0;
+    }
+
+    $content = file_get_contents($file);
+
+    if (str_contains($content, 'BEACON_ENDPOINT')) {
+        ok($filename.' — BEACON vars already present.');
+        return 0;
+    }
+
+    $block = "\n###> makfly/beacon-sdk-php ###\n"
+        ."# Beacon ingester — leave empty to disable (silent no-op).\n"
+        ."BEACON_ENDPOINT=\n"
+        ."BEACON_TOKEN=\n"
+        ."###< makfly/beacon-sdk-php ###\n";
+
+    file_put_contents($file, rtrim($content)."\n".$block);
+    ok($filename.' — BEACON vars added.');
+    return 1;
+}
+
+function ok(string $msg): void
+{
+    echo "  \033[32m✓\033[0m {$msg}\n";
+}
+
+function info(string $msg): void
+{
+    echo "\n  \033[36mbeacon-sdk-php\033[0m {$msg}\n\n";
+}
+
+function stderr(string $msg): void
+{
+    fwrite(STDERR, "  \033[31m✗\033[0m {$msg}\n");
+}
