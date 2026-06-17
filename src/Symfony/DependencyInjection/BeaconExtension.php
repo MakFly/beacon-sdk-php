@@ -7,6 +7,8 @@ namespace KevStudios\Beacon\Symfony\DependencyInjection;
 use KevStudios\Beacon\Beacon;
 use KevStudios\Beacon\Config;
 use KevStudios\Beacon\Symfony\EventSubscriber\ExceptionSubscriber;
+use KevStudios\Beacon\Symfony\EventSubscriber\RequestSpanSubscriber;
+use KevStudios\Beacon\Symfony\Monolog\BeaconHandler;
 use KevStudios\Beacon\Transport\CurlSender;
 use KevStudios\Beacon\Transport\SenderInterface;
 use Symfony\Component\Config\Definition\Processor;
@@ -27,7 +29,7 @@ final class BeaconExtension implements ExtensionInterface
             'service.stage' => $config['stage'],
             'telemetry.sdk.name' => 'beacon-sdk-php',
             'telemetry.sdk.language' => 'php',
-            'telemetry.sdk.version' => '0.2.0',
+            'telemetry.sdk.version' => '0.3.0',
         ], static fn ($v) => $v !== null);
 
         $configDef = new Definition(Config::class, [
@@ -50,12 +52,29 @@ final class BeaconExtension implements ExtensionInterface
             '$config' => new Reference('beacon.config'),
             '$sender' => new Reference('beacon.sender'),
         ]);
+        $beaconDef->setPublic(true);
         $container->setDefinition(Beacon::class, $beaconDef);
-        $container->setAlias('beacon', Beacon::class);
+        $container->setAlias('beacon', Beacon::class)->setPublic(true);
 
-        $subscriberDef = new Definition(ExceptionSubscriber::class, ['$beacon' => new Reference(Beacon::class)]);
-        $subscriberDef->addTag('kernel.event_subscriber');
-        $container->setDefinition(ExceptionSubscriber::class, $subscriberDef);
+        // Exception capture — auto-captures unhandled kernel exceptions.
+        $exSub = new Definition(ExceptionSubscriber::class, ['$beacon' => new Reference(Beacon::class)]);
+        $exSub->addTag('kernel.event_subscriber');
+        $container->setDefinition(ExceptionSubscriber::class, $exSub);
+
+        // Request span — root HTTP span for every request (traces + performance).
+        $reqSub = new Definition(RequestSpanSubscriber::class, ['$beacon' => new Reference(Beacon::class)]);
+        $reqSub->addTag('kernel.event_subscriber');
+        $container->setDefinition(RequestSpanSubscriber::class, $reqSub);
+        $container->setAlias('beacon.request_span', RequestSpanSubscriber::class);
+
+        // Monolog handler — forward WARNING+ logs to the ingester.
+        if (class_exists(\Monolog\Handler\AbstractProcessingHandler::class)) {
+            $handlerDef = new Definition(BeaconHandler::class, [
+                '$beacon' => new Reference(Beacon::class),
+            ]);
+            $container->setDefinition(BeaconHandler::class, $handlerDef);
+            $container->setAlias('beacon.monolog_handler', BeaconHandler::class);
+        }
     }
 
     public function getAlias(): string
