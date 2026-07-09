@@ -73,7 +73,7 @@ final class RequestSpanSubscriber implements EventSubscriberInterface
         $controller = $request->attributes->get('_controller');
         $isError = $this->statusCode >= 500;
 
-        $name = $request->getMethod().' '.($route ?? $request->getPathInfo());
+        $name = $this->httpOperationName($request);
 
         $span = [
             'traceId' => $this->traceId,
@@ -116,5 +116,10 @@ final class RequestSpanSubscriber implements EventSubscriberInterface
     public function spanId(): ?string
     {
         return $this->spanId;
+    }
+
+    private function httpOperationName(Request $request): string
+    {
+        return trim($request->getMethod().' '.$request->getPathInfo());
     }
 }

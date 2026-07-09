@@ -55,11 +55,12 @@ final class ExceptionSubscriber implements EventSubscriberInterface
     {
         $route = $request->attributes->get('_route');
         $controller = $request->attributes->get('_controller');
+        $operation = $this->httpOperationName($request);
 
         return array_filter([
             Protocol::ATTR_ENTRY_POINT_TYPE => Protocol::ENTRY_WEB,
             Protocol::ATTR_ENTRY_POINT_VALUE => $request->getUri(),
-            Protocol::ATTR_HANDLER_IDENTIFIER => $request->getMethod().' '.($route ?? $request->getPathInfo()),
+            Protocol::ATTR_HANDLER_IDENTIFIER => $operation,
             Protocol::ATTR_HANDLER_NAME => \is_string($controller) ? $controller : null,
             Protocol::ATTR_HANDLER_TYPE => Protocol::HANDLER_SYMFONY_CONTROLLER,
             'http.request.method' => $request->getMethod(),
@@ -69,5 +70,10 @@ final class ExceptionSubscriber implements EventSubscriberInterface
             'client.address' => $request->getClientIp(),
             'user_agent.original' => substr((string) $request->headers->get('User-Agent'), 0, 512),
         ], static fn ($v) => $v !== null);
+    }
+
+    private function httpOperationName(Request $request): string
+    {
+        return trim($request->getMethod().' '.$request->getPathInfo());
     }
 }
