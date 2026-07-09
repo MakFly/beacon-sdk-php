@@ -13,6 +13,7 @@ use KevStudios\Beacon\Transport\CurlSender;
 use KevStudios\Beacon\Transport\SenderInterface;
 use Symfony\Component\Config\Definition\Processor;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 use Symfony\Component\DependencyInjection\Reference;
@@ -56,13 +57,21 @@ final class BeaconExtension implements ExtensionInterface
         $container->setDefinition(Beacon::class, $beaconDef);
         $container->setAlias('beacon', Beacon::class)->setPublic(true);
 
+        $router = new Reference('router', ContainerInterface::NULL_ON_INVALID_REFERENCE);
+
         // Exception capture — auto-captures unhandled kernel exceptions.
-        $exSub = new Definition(ExceptionSubscriber::class, ['$beacon' => new Reference(Beacon::class)]);
+        $exSub = new Definition(ExceptionSubscriber::class, [
+            '$beacon' => new Reference(Beacon::class),
+            '$router' => $router,
+        ]);
         $exSub->addTag('kernel.event_subscriber');
         $container->setDefinition(ExceptionSubscriber::class, $exSub);
 
         // Request span — root HTTP span for every request (traces + performance).
-        $reqSub = new Definition(RequestSpanSubscriber::class, ['$beacon' => new Reference(Beacon::class)]);
+        $reqSub = new Definition(RequestSpanSubscriber::class, [
+            '$beacon' => new Reference(Beacon::class),
+            '$router' => $router,
+        ]);
         $reqSub->addTag('kernel.event_subscriber');
         $container->setDefinition(RequestSpanSubscriber::class, $reqSub);
         $container->setAlias('beacon.request_span', RequestSpanSubscriber::class);
