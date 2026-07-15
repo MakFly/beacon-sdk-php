@@ -116,7 +116,7 @@ function createBeaconYaml(string $root): int
         '    # Root path stripped from stacktrace frames to detect application vs vendor code.',
         "    application_path: '%kernel.project_dir%'",
         '    # Capture exception constructor/method arguments in stacktraces.',
-        '    collect_arguments: true',
+        '    collect_arguments: false',
         '    # Fraction of requests that generate trace spans (0.0 = none, 1.0 = all).',
         '    traces_sample_rate: 1.0',
         '    # Attribute keys scrubbed to [CENSORED] before sending (case-insensitive).',

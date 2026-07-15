@@ -21,7 +21,7 @@ final class CurlSender implements SenderInterface
     public function __construct(
         private readonly string $endpoint,
         string $token,
-        private readonly string $sdk = 'php/0.2.0',
+        private readonly string $sdk = 'php/0.3.1',
         private readonly float $timeout = 2.0,
     ) {
         $this->token = preg_replace('/[\r\n]/', '', $token) ?? $token;

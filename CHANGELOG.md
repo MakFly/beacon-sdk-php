@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.1
+
+Privacy-safe patch release. Stack-frame arguments are now opt-in and disabled by default.
+The transport identity is aligned with the package release.
+
 ## v0.1.2
 
 Republish with clean git history. `v0.1.1`'s Packagist dist reference points to a commit

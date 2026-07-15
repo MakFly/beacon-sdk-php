@@ -61,7 +61,7 @@ beacon:
     service_version: ~                            # optional (null)
     stage: '%kernel.environment%'                 # optional
     application_path: '%kernel.project_dir%'      # optional
-    collect_arguments: true                       # capture exception arguments
+    collect_arguments: false                      # opt-in: may contain sensitive values
     traces_sample_rate: 1.0                       # 0.0–1.0
     censor_keys:                                  # scrubbed from attributes
         - password

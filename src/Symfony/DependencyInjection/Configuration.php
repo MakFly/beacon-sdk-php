@@ -23,7 +23,7 @@ final class Configuration implements ConfigurationInterface
                 ->scalarNode('service_version')->defaultNull()->end()
                 ->scalarNode('stage')->defaultValue('%kernel.environment%')->end()
                 ->scalarNode('application_path')->defaultValue('%kernel.project_dir%')->end()
-                ->booleanNode('collect_arguments')->defaultTrue()->end()
+                ->booleanNode('collect_arguments')->defaultFalse()->end()
                 ->floatNode('traces_sample_rate')->defaultValue(1.0)->min(0.0)->max(1.0)->end()
                 ->arrayNode('censor_keys')
                     ->scalarPrototype()->end()

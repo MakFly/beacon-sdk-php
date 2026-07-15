@@ -18,7 +18,7 @@ final class Config
         public readonly array $resource,
         public readonly array $censorKeys = ['password', 'authorization', 'cookie', 'token', 'secret', 'api_key'],
         public readonly int $maxStringLength = 4096,
-        public readonly bool $collectArguments = true,
+        public readonly bool $collectArguments = false,
         public readonly float $tracesSampleRate = 1.0,
         public readonly ?string $applicationPath = null,
     ) {

@@ -96,6 +96,7 @@ check('handled flag true', ($error['handled'] ?? null) === true);
 check('stacktrace non-empty', \count($error['stacktrace'] ?? []) > 0);
 check('top frame has line number', ($error['stacktrace'][0]['lineNumber'] ?? 0) > 0);
 check('an application frame is detected', (bool) array_filter($error['stacktrace'] ?? [], fn ($f) => $f['isApplicationFrame'] ?? false));
+check('stack arguments disabled by default', array_filter($error['stacktrace'] ?? [], fn ($f) => ($f['arguments'] ?? null) !== null) === []);
 check('authorization attribute censored', ($error['attributes']['authorization'] ?? null) === '[CENSORED]');
 check('non-sensitive attribute kept', ($error['attributes']['order.id'] ?? null) === 42);
 check('resource carries service.name', ($error['resource']['service.name'] ?? null) === 'iautos-api');
