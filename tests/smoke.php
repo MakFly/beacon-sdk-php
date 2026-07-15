@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 use KevStudios\Beacon\Beacon;
 use KevStudios\Beacon\Config;
+use KevStudios\Beacon\Doctrine\SqlNormalizer;
 use KevStudios\Beacon\Propagation\TraceContext;
 use KevStudios\Beacon\Propagation\W3CPropagator;
 use KevStudios\Beacon\Transport\SenderInterface;
@@ -173,6 +174,12 @@ $extracted = W3CPropagator::extract($headers);
 check('W3C traceparent is injected', ($headers['traceparent'] ?? null) === '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01');
 check('W3C traceparent/tracestate/baggage round-trip', $extracted == $context);
 check('all-zero W3C trace id is rejected', W3CPropagator::parseTraceparent('00-00000000000000000000000000000000-b7ad6b7169203331-01') === null);
+
+echo "Doctrine SQL normalization:\n";
+$normalizedSql = SqlNormalizer::normalize("SELECT *\nFROM users WHERE email = 'person@example.com' AND id = 42 AND role IN ('admin', 'member')");
+check('SQL literal values are removed', !str_contains($normalizedSql, 'person@example.com') && !str_contains($normalizedSql, '42') && !str_contains($normalizedSql, 'admin'));
+check('SQL placeholders collapse to a stable group', $normalizedSql === 'SELECT * FROM users WHERE email = ? AND id = ? AND role IN (?)');
+check('SQL operation is extracted', SqlNormalizer::operation($normalizedSql) === 'SELECT');
 
 echo $failures === 0 ? "\nALL PASS\n" : "\n$failures FAILURES\n";
 exit($failures === 0 ? 0 : 1);

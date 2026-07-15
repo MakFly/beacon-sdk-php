@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.0
+
+Adds automatic Doctrine DBAL 4 query spans under the active Symfony HTTP trace. SQL
+operation names are normalized before capture so literal values never become telemetry
+attributes or high-cardinality group keys.
+
 ## v0.4.0
 
 Reliable transport with timeout, bounded retries, `429`/`Retry-After`, retained bounded

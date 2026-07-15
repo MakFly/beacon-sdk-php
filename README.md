@@ -50,6 +50,11 @@ errors, spans and logs.
 `W3CPropagator` injects and extracts `traceparent`, `tracestate` and `baggage` for
 cross-service context propagation.
 
+When Doctrine DBAL 4 is installed, the Symfony bundle automatically records queries,
+prepared statements and `exec()` calls as `db_query` child spans. SQL literals are
+replaced with placeholders before capture: the waterfall exposes the real duration
+without leaking parameter values.
+
 ## Configuration
 
 All options in `config/packages/beacon.yaml` (with defaults):

@@ -70,7 +70,7 @@ final class Beacon
      *
      * @param list<array<string, mixed>> $spans
      */
-    public function captureSpans(array $spans, string $scopeName = 'beacon-sdk-php', string $scopeVersion = '0.4.0'): void
+    public function captureSpans(array $spans, string $scopeName = 'beacon-sdk-php', string $scopeVersion = '0.5.0'): void
     {
         if ($spans === [] || !$this->shouldSample($spans)) {
             return;

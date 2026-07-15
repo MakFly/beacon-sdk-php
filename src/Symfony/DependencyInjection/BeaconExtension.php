@@ -6,6 +6,7 @@ namespace KevStudios\Beacon\Symfony\DependencyInjection;
 
 use KevStudios\Beacon\Beacon;
 use KevStudios\Beacon\Config;
+use KevStudios\Beacon\Doctrine\DoctrineMiddleware;
 use KevStudios\Beacon\Symfony\EventSubscriber\ExceptionSubscriber;
 use KevStudios\Beacon\Symfony\EventSubscriber\RequestSpanSubscriber;
 use KevStudios\Beacon\Symfony\Monolog\BeaconHandler;
@@ -30,7 +31,7 @@ final class BeaconExtension implements ExtensionInterface
             'service.stage' => $config['stage'],
             'telemetry.sdk.name' => 'beacon-sdk-php',
             'telemetry.sdk.language' => 'php',
-            'telemetry.sdk.version' => '0.4.0',
+            'telemetry.sdk.version' => '0.5.0',
         ], static fn ($v) => $v !== null);
 
         $configDef = new Definition(Config::class, [
@@ -76,6 +77,16 @@ final class BeaconExtension implements ExtensionInterface
         $reqSub->addTag('kernel.event_subscriber');
         $container->setDefinition(RequestSpanSubscriber::class, $reqSub);
         $container->setAlias('beacon.request_span', RequestSpanSubscriber::class);
+
+        // Doctrine DBAL 4 — SQL spans are children of the active HTTP request span.
+        if (interface_exists(\Doctrine\DBAL\Driver\Middleware::class)) {
+            $doctrineMiddleware = new Definition(DoctrineMiddleware::class, [
+                '$beacon' => new Reference(Beacon::class),
+                '$requestSpan' => new Reference(RequestSpanSubscriber::class),
+            ]);
+            $doctrineMiddleware->addTag('doctrine.middleware');
+            $container->setDefinition(DoctrineMiddleware::class, $doctrineMiddleware);
+        }
 
         // Monolog handler — forward WARNING+ logs to the ingester.
         if (class_exists(\Monolog\Handler\AbstractProcessingHandler::class)) {
