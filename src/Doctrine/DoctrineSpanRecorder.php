@@ -21,6 +21,10 @@ final class DoctrineSpanRecorder
 
     public function record(string $sql, callable $operation): mixed
     {
+        if (!$this->beacon->isEnabled()) {
+            return $operation();
+        }
+
         $traceId = $this->requestSpan->traceId();
         $parentSpanId = $this->requestSpan->spanId();
         if ($traceId === null || $parentSpanId === null) {

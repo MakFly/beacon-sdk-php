@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.1
+
+Skips request and Doctrine span construction entirely when the configured transport is
+disabled, preserving the SDK's zero-overhead no-op contract.
+
 ## v0.5.0
 
 Adds automatic Doctrine DBAL 4 query spans under the active Symfony HTTP trace. SQL

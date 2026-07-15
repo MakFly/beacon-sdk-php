@@ -10,7 +10,7 @@ use KevStudios\Beacon\Protocol;
  * Native cURL transport — zero external HTTP dependency. Sends newline-delimited JSON
  * (one payload per line) and swallows every failure so telemetry never breaks the host.
  */
-final class CurlSender implements SenderInterface
+final class CurlSender implements AvailabilityAwareSenderInterface
 {
     private readonly string $token;
 
@@ -21,7 +21,7 @@ final class CurlSender implements SenderInterface
     public function __construct(
         private readonly string $endpoint,
         string $token,
-        private readonly string $sdk = 'php/0.5.0',
+        private readonly string $sdk = 'php/0.5.1',
         private readonly float $timeout = 2.0,
         private readonly int $maxAttempts = 3,
         private readonly int $retryBaseDelayMs = 200,
@@ -93,6 +93,11 @@ final class CurlSender implements SenderInterface
         }
 
         return false;
+    }
+
+    public function isAvailable(): bool
+    {
+        return $this->endpoint !== '' && $this->token !== '';
     }
 
     private function retryable(int $status): bool

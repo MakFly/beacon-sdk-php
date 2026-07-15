@@ -46,7 +46,7 @@ final class RequestSpanSubscriber implements EventSubscriberInterface
 
     public function onRequest(RequestEvent $event): void
     {
-        if (!$event->isMainRequest()) {
+        if (!$event->isMainRequest() || !$this->beacon->isEnabled()) {
             return;
         }
 

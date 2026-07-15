@@ -31,7 +31,7 @@ final class BeaconExtension implements ExtensionInterface
             'service.stage' => $config['stage'],
             'telemetry.sdk.name' => 'beacon-sdk-php',
             'telemetry.sdk.language' => 'php',
-            'telemetry.sdk.version' => '0.5.0',
+            'telemetry.sdk.version' => '0.5.1',
         ], static fn ($v) => $v !== null);
 
         $configDef = new Definition(Config::class, [

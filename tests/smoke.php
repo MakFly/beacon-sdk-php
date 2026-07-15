@@ -12,6 +12,7 @@ use KevStudios\Beacon\Config;
 use KevStudios\Beacon\Doctrine\SqlNormalizer;
 use KevStudios\Beacon\Propagation\TraceContext;
 use KevStudios\Beacon\Propagation\W3CPropagator;
+use KevStudios\Beacon\Transport\CurlSender;
 use KevStudios\Beacon\Transport\SenderInterface;
 
 // Minimal PSR-4 autoloader for KevStudios\Beacon\ → src/.
@@ -134,6 +135,8 @@ check('severity mapped ERROR→17', ($log['records'][0]['severityNumber'] ?? nul
 check('nested log authorization censored', ($log['records'][0]['attributes']['http']['authorization'] ?? null) === '[CENSORED]');
 
 echo "Reliability:\n";
+$disabled = new Beacon(new Config(resource: ['service.name' => 'disabled-test']), new CurlSender('', ''));
+check('empty endpoint and token disable all telemetry work', !$disabled->isEnabled());
 $sampledOut = new CapturingSender();
 $neverSample = new Beacon(new Config(resource: ['service.name' => 'sample-test'], tracesSampleRate: 0.0), $sampledOut);
 $neverSample->captureSpans([[

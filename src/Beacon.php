@@ -10,6 +10,7 @@ use KevStudios\Beacon\Middleware\Redactor;
 use KevStudios\Beacon\Report\ErrorReport;
 use KevStudios\Beacon\Report\ExceptionReportBuilder;
 use KevStudios\Beacon\Stacktrace\StackTraceMapper;
+use KevStudios\Beacon\Transport\AvailabilityAwareSenderInterface;
 use KevStudios\Beacon\Transport\SenderInterface;
 
 /**
@@ -59,6 +60,9 @@ final class Beacon
      */
     public function captureException(\Throwable $throwable, bool $handled = true, array $attributes = []): void
     {
+        if (!$this->isEnabled()) {
+            return;
+        }
         $report = $this->builder->build($throwable, $handled, $attributes);
         $report = $this->runPipeline($report);
         $this->appendBounded($this->errorBuffer, $report->toArray());
@@ -70,9 +74,9 @@ final class Beacon
      *
      * @param list<array<string, mixed>> $spans
      */
-    public function captureSpans(array $spans, string $scopeName = 'beacon-sdk-php', string $scopeVersion = '0.5.0'): void
+    public function captureSpans(array $spans, string $scopeName = 'beacon-sdk-php', string $scopeVersion = '0.5.1'): void
     {
-        if ($spans === [] || !$this->shouldSample($spans)) {
+        if (!$this->isEnabled() || $spans === [] || !$this->shouldSample($spans)) {
             return;
         }
         $this->appendBounded($this->spanBuffer, [
@@ -87,6 +91,9 @@ final class Beacon
      */
     public function log(string $level, string $body, array $attributes = [], ?string $traceId = null, ?string $spanId = null): void
     {
+        if (!$this->isEnabled()) {
+            return;
+        }
         $severity = Protocol::SEVERITY[strtoupper($level)] ?? Protocol::SEVERITY['INFO'];
         $this->appendBounded($this->logBuffer, [
             'resource' => $this->redactor->redact($this->config->resource),
@@ -106,6 +113,9 @@ final class Beacon
     /** Send everything buffered now. */
     public function flush(): void
     {
+        if (!$this->isEnabled()) {
+            return;
+        }
         if ($this->errorBuffer !== []) {
             if ($this->sender->send('errors', $this->errorBuffer)) {
                 $this->errorBuffer = [];
@@ -121,6 +131,11 @@ final class Beacon
                 $this->logBuffer = [];
             }
         }
+    }
+
+    public function isEnabled(): bool
+    {
+        return !($this->sender instanceof AvailabilityAwareSenderInterface) || $this->sender->isAvailable();
     }
 
     /** @param list<array<string, mixed>> $buffer @param array<string, mixed> $payload */
