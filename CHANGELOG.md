@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.2
+
+The Symfony setup now writes `https://ingest.pulseview.app` as the default ingestion
+endpoint. Applications can still override it for self-hosted and internal Docker routes;
+an empty token keeps the SDK disabled.
+
 ## v0.5.1
 
 Skips request and Doctrine span construction entirely when the configured transport is

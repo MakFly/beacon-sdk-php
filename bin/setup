@@ -33,7 +33,7 @@ $changes += patchEnv($projectRoot, '.env.example');
 if ($changes === 0) {
     info('Already configured — nothing to do.');
 } else {
-    info("Done. Set \033[33mBEACON_ENDPOINT\033[0m + \033[33mBEACON_TOKEN\033[0m in .env.local to enable.");
+    info("Done. Set \033[33mBEACON_TOKEN\033[0m in .env.local to enable. Override \033[33mBEACON_ENDPOINT\033[0m only for self-hosted ingestion.");
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -154,8 +154,8 @@ function patchEnv(string $root, string $filename): int
     }
 
     $block = "\n###> makfly/beacon-sdk-php ###\n"
-        ."# Beacon ingester — leave empty to disable (silent no-op).\n"
-        ."BEACON_ENDPOINT=\n"
+        ."# Beacon ingester — override for self-hosted or internal Docker ingestion.\n"
+        ."BEACON_ENDPOINT=https://ingest.pulseview.app\n"
         ."BEACON_TOKEN=\n"
         ."###< makfly/beacon-sdk-php ###\n";
 

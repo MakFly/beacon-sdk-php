@@ -22,9 +22,13 @@ Set the env vars to activate:
 
 ```dotenv
 # .env.local
-BEACON_ENDPOINT=https://beacon.example.com
+BEACON_ENDPOINT=https://ingest.pulseview.app
 BEACON_TOKEN=priv_my_project
 ```
+
+The generated configuration uses `https://ingest.pulseview.app`. Override
+`BEACON_ENDPOINT` for a self-hosted installation or an internal Docker address.
+The empty token keeps the SDK disabled until a project credential is provided.
 
 > Before the package is on Packagist, add a VCS repository:
 > ```json
