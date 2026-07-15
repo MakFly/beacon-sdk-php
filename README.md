@@ -42,6 +42,14 @@ Unhandled kernel exceptions are captured automatically via `ExceptionSubscriber`
 The buffer flushes on `kernel.terminate` (post-response). The transport swallows
 every failure — telemetry never breaks the host app.
 
+Transport attempts time out after 2 seconds and retry network failures, `408`, `429`
+and `5xx` with exponential jitter while honoring `Retry-After`. Failed batches remain
+in a bounded in-memory backlog (`max_backlog_items`, default 500). Trace sampling is
+deterministic via `traces_sample_rate`, and sensitive keys are redacted recursively in
+errors, spans and logs.
+`W3CPropagator` injects and extracts `traceparent`, `tracestate` and `baggage` for
+cross-service context propagation.
+
 ## Configuration
 
 All options in `config/packages/beacon.yaml` (with defaults):
@@ -63,6 +71,7 @@ beacon:
     application_path: '%kernel.project_dir%'      # optional
     collect_arguments: false                      # opt-in: may contain sensitive values
     traces_sample_rate: 1.0                       # 0.0–1.0
+    max_backlog_items: 500                        # bounded in-memory retry backlog
     censor_keys:                                  # scrubbed from attributes
         - password
         - authorization

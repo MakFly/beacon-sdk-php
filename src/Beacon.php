@@ -6,6 +6,7 @@ namespace KevStudios\Beacon;
 
 use KevStudios\Beacon\Middleware\BeaconMiddleware;
 use KevStudios\Beacon\Middleware\CensorMiddleware;
+use KevStudios\Beacon\Middleware\Redactor;
 use KevStudios\Beacon\Report\ErrorReport;
 use KevStudios\Beacon\Report\ExceptionReportBuilder;
 use KevStudios\Beacon\Stacktrace\StackTraceMapper;
@@ -19,6 +20,7 @@ use KevStudios\Beacon\Transport\SenderInterface;
 final class Beacon
 {
     private readonly ExceptionReportBuilder $builder;
+    private readonly Redactor $redactor;
 
     /** @var list<BeaconMiddleware> */
     private array $middleware;
@@ -39,6 +41,7 @@ final class Beacon
         private readonly SenderInterface $sender,
     ) {
         $this->builder = new ExceptionReportBuilder($config, new StackTraceMapper($config));
+        $this->redactor = new Redactor($config->censorKeys);
         // Censoring is always last so middleware-added attributes are also scrubbed.
         $this->middleware = [new CensorMiddleware($config->censorKeys)];
     }
@@ -58,7 +61,7 @@ final class Beacon
     {
         $report = $this->builder->build($throwable, $handled, $attributes);
         $report = $this->runPipeline($report);
-        $this->errorBuffer[] = $report->toArray();
+        $this->appendBounded($this->errorBuffer, $report->toArray());
         $this->registerShutdown();
     }
 
@@ -67,15 +70,15 @@ final class Beacon
      *
      * @param list<array<string, mixed>> $spans
      */
-    public function captureSpans(array $spans, string $scopeName = 'beacon-sdk-php', string $scopeVersion = '0.1.0'): void
+    public function captureSpans(array $spans, string $scopeName = 'beacon-sdk-php', string $scopeVersion = '0.4.0'): void
     {
-        if ($spans === []) {
+        if ($spans === [] || !$this->shouldSample($spans)) {
             return;
         }
-        $this->spanBuffer[] = [
-            'resource' => $this->config->resource,
-            'scopes' => [['name' => $scopeName, 'version' => $scopeVersion, 'spans' => $spans]],
-        ];
+        $this->appendBounded($this->spanBuffer, [
+            'resource' => $this->redactor->redact($this->config->resource),
+            'scopes' => [['name' => $scopeName, 'version' => $scopeVersion, 'spans' => $this->redactor->redact($spans)]],
+        ]);
         $this->registerShutdown();
     }
 
@@ -85,8 +88,8 @@ final class Beacon
     public function log(string $level, string $body, array $attributes = [], ?string $traceId = null, ?string $spanId = null): void
     {
         $severity = Protocol::SEVERITY[strtoupper($level)] ?? Protocol::SEVERITY['INFO'];
-        $this->logBuffer[] = [
-            'resource' => $this->config->resource,
+        $this->appendBounded($this->logBuffer, [
+            'resource' => $this->redactor->redact($this->config->resource),
             'records' => [[
                 'timeUnixNano' => Time::nowNano(),
                 'severityNumber' => $severity,
@@ -94,9 +97,9 @@ final class Beacon
                 'body' => $body,
                 'traceId' => $traceId,
                 'spanId' => $spanId,
-                'attributes' => $attributes,
+                'attributes' => $this->redactor->redact($attributes),
             ]],
-        ];
+        ]);
         $this->registerShutdown();
     }
 
@@ -104,17 +107,49 @@ final class Beacon
     public function flush(): void
     {
         if ($this->errorBuffer !== []) {
-            $this->sender->send('errors', $this->errorBuffer);
-            $this->errorBuffer = [];
+            if ($this->sender->send('errors', $this->errorBuffer)) {
+                $this->errorBuffer = [];
+            }
         }
         if ($this->spanBuffer !== []) {
-            $this->sender->send('traces', $this->spanBuffer);
-            $this->spanBuffer = [];
+            if ($this->sender->send('traces', $this->spanBuffer)) {
+                $this->spanBuffer = [];
+            }
         }
         if ($this->logBuffer !== []) {
-            $this->sender->send('logs', $this->logBuffer);
-            $this->logBuffer = [];
+            if ($this->sender->send('logs', $this->logBuffer)) {
+                $this->logBuffer = [];
+            }
         }
+    }
+
+    /** @param list<array<string, mixed>> $buffer @param array<string, mixed> $payload */
+    private function appendBounded(array &$buffer, array $payload): void
+    {
+        $maximum = max(1, $this->config->maxBacklogItems);
+        if (\count($buffer) >= $maximum) {
+            array_shift($buffer);
+        }
+        $buffer[] = $payload;
+    }
+
+    /** @param list<array<string, mixed>> $spans */
+    private function shouldSample(array $spans): bool
+    {
+        $rate = max(0.0, min(1.0, $this->config->tracesSampleRate));
+        if ($rate <= 0.0) {
+            return false;
+        }
+        if ($rate >= 1.0) {
+            return true;
+        }
+
+        $traceId = $spans[0]['traceId'] ?? null;
+        if (\is_string($traceId) && preg_match('/^[0-9a-f]{8}/i', $traceId) === 1) {
+            return hexdec(substr($traceId, 0, 8)) / 4294967296 < $rate;
+        }
+
+        return random_int(0, 1_000_000) / 1_000_000 < $rate;
     }
 
     private function runPipeline(ErrorReport $report): ErrorReport

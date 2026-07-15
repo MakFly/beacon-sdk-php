@@ -14,5 +14,5 @@ interface SenderInterface
      * @param 'errors'|'traces'|'logs' $endpoint
      * @param list<array<string, mixed>> $payloads
      */
-    public function send(string $endpoint, array $payloads): void;
+    public function send(string $endpoint, array $payloads): bool;
 }

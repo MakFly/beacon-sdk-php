@@ -30,7 +30,7 @@ final class BeaconExtension implements ExtensionInterface
             'service.stage' => $config['stage'],
             'telemetry.sdk.name' => 'beacon-sdk-php',
             'telemetry.sdk.language' => 'php',
-            'telemetry.sdk.version' => '0.3.0',
+            'telemetry.sdk.version' => '0.4.0',
         ], static fn ($v) => $v !== null);
 
         $configDef = new Definition(Config::class, [
@@ -39,6 +39,7 @@ final class BeaconExtension implements ExtensionInterface
             '$collectArguments' => $config['collect_arguments'],
             '$tracesSampleRate' => $config['traces_sample_rate'],
             '$applicationPath' => $config['application_path'],
+            '$maxBacklogItems' => $config['max_backlog_items'],
         ]);
         $container->setDefinition('beacon.config', $configDef);
 

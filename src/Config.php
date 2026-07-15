@@ -13,6 +13,7 @@ final class Config
      * @param int                        $maxStringLength   Truncate long attribute strings
      * @param bool                       $collectArguments  Capture stack-frame argument values
      * @param float                      $tracesSampleRate  0.0–1.0 head sampling for traces
+     * @param int                        $maxBacklogItems   Maximum retained payloads per signal
      */
     public function __construct(
         public readonly array $resource,
@@ -21,6 +22,7 @@ final class Config
         public readonly bool $collectArguments = false,
         public readonly float $tracesSampleRate = 1.0,
         public readonly ?string $applicationPath = null,
+        public readonly int $maxBacklogItems = 500,
     ) {
     }
 

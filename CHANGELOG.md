@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.0
+
+Reliable transport with timeout, bounded retries, `429`/`Retry-After`, retained bounded
+buffers, effective trace sampling, and recursive redaction across every signal.
+Adds W3C `traceparent`, `tracestate` and `baggage` propagation helpers.
+
 ## v0.3.1
 
 Privacy-safe patch release. Stack-frame arguments are now opt-in and disabled by default.
