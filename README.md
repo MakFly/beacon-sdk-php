@@ -59,6 +59,11 @@ prepared statements and `exec()` calls as `db_query` child spans. SQL literals a
 replaced with placeholders before capture: the waterfall exposes the real duration
 without leaking parameter values.
 
+When Symfony's concrete PSR-18 client is registered, the bundle decorates it automatically
+and records external calls as `http_client` child spans. Names use only the HTTP method and
+host to stay low-cardinality. Paths, query strings, headers and request bodies are never
+captured.
+
 ## Configuration
 
 All options in `config/packages/beacon.yaml` (with defaults):

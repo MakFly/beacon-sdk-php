@@ -74,7 +74,7 @@ final class Beacon
      *
      * @param list<array<string, mixed>> $spans
      */
-    public function captureSpans(array $spans, string $scopeName = 'beacon-sdk-php', string $scopeVersion = '0.5.1'): void
+    public function captureSpans(array $spans, string $scopeName = 'beacon-sdk-php', string $scopeVersion = Protocol::SDK_VERSION): void
     {
         if (!$this->isEnabled() || $spans === [] || !$this->shouldSample($spans)) {
             return;

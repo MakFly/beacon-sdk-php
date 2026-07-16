@@ -7,12 +7,16 @@
     "require": {
         "php": ">=8.2",
         "ext-curl": "*",
-        "ext-json": "*"
+        "ext-json": "*",
+        "psr/http-client": "^1.0",
+        "psr/http-message": "^1.1 || ^2.0"
     },
     "require-dev": {
         "doctrine/dbal": "^4.0",
         "phpunit/phpunit": "^11.0",
+        "nyholm/psr7": "^1.8",
         "symfony/http-kernel": "^7.0 || ^8.0",
+        "symfony/http-client": "^7.0 || ^8.0",
         "symfony/dependency-injection": "^7.0 || ^8.0",
         "symfony/config": "^7.0 || ^8.0",
         "symfony/event-dispatcher": "^7.0 || ^8.0",
@@ -22,7 +26,8 @@
         "symfony/http-kernel": "For the Symfony bundle integration (exception capture, request spans)",
         "symfony/routing": "For resolving Symfony route names to HTTP route templates",
         "symfony/messenger": "To trace queued message handling as entry points",
-        "doctrine/dbal": "To capture db_query spans via the Beacon Doctrine middleware"
+        "doctrine/dbal": "To capture db_query spans via the Beacon Doctrine middleware",
+        "symfony/http-client": "To capture PSR-18 http_client spans automatically"
     },
     "autoload": {
         "psr-4": {
@@ -33,6 +38,14 @@
         "psr-4": {
             "KevStudios\\Beacon\\Tests\\": "tests/"
         }
+    },
+    "scripts": {
+        "test": [
+            "@php tests/smoke.php",
+            "@php tests/doctrine.php",
+            "@php tests/http_client.php",
+            "@php tests/setup.php"
+        ]
     },
     "bin": ["bin/setup"],
     "config": {

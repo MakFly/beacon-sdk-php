@@ -7,6 +7,8 @@ namespace KevStudios\Beacon\Symfony\DependencyInjection;
 use KevStudios\Beacon\Beacon;
 use KevStudios\Beacon\Config;
 use KevStudios\Beacon\Doctrine\DoctrineMiddleware;
+use KevStudios\Beacon\Http\Psr18TracingClient;
+use KevStudios\Beacon\Protocol;
 use KevStudios\Beacon\Symfony\EventSubscriber\ExceptionSubscriber;
 use KevStudios\Beacon\Symfony\EventSubscriber\RequestSpanSubscriber;
 use KevStudios\Beacon\Symfony\Monolog\BeaconHandler;
@@ -31,7 +33,7 @@ final class BeaconExtension implements ExtensionInterface
             'service.stage' => $config['stage'],
             'telemetry.sdk.name' => 'beacon-sdk-php',
             'telemetry.sdk.language' => 'php',
-            'telemetry.sdk.version' => '0.5.1',
+            'telemetry.sdk.version' => Protocol::SDK_VERSION,
         ], static fn ($v) => $v !== null);
 
         $configDef = new Definition(Config::class, [
@@ -86,6 +88,17 @@ final class BeaconExtension implements ExtensionInterface
             ]);
             $doctrineMiddleware->addTag('doctrine.middleware');
             $container->setDefinition(DoctrineMiddleware::class, $doctrineMiddleware);
+        }
+
+        // Symfony PSR-18 client — external calls become children of the active request span.
+        if (interface_exists(\Psr\Http\Client\ClientInterface::class) && class_exists(\Symfony\Component\HttpClient\Psr18Client::class)) {
+            $httpClient = new Definition(Psr18TracingClient::class, [
+                '$inner' => new Reference(Psr18TracingClient::class.'.inner'),
+                '$beacon' => new Reference(Beacon::class),
+                '$requestSpan' => new Reference(RequestSpanSubscriber::class),
+            ]);
+            $httpClient->setDecoratedService(\Symfony\Component\HttpClient\Psr18Client::class);
+            $container->setDefinition(Psr18TracingClient::class, $httpClient);
         }
 
         // Monolog handler — forward WARNING+ logs to the ingester.

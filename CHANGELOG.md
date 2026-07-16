@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.0
+
+Automatically decorates Symfony's concrete PSR-18 client and records privacy-safe
+`http_client` spans under the active request trace. The span keeps method, host, port,
+protocol and response status while excluding paths, query strings, headers and bodies.
+
 ## v0.5.2
 
 The Symfony setup now writes `https://ingest.pulseview.app` as the default ingestion
