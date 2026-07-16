@@ -25,6 +25,8 @@ final class Configuration implements ConfigurationInterface
                 ->scalarNode('application_path')->defaultValue('%kernel.project_dir%')->end()
                 ->booleanNode('collect_arguments')->defaultFalse()->end()
                 ->floatNode('traces_sample_rate')->defaultValue(1.0)->min(0.0)->max(1.0)->end()
+                ->booleanNode('capture_user')->defaultTrue()->info('Attach a pseudonymous authenticated user id to errors and root spans')->end()
+                ->scalarNode('user_hash_key')->defaultNull()->info('Optional HMAC key; defaults to kernel.secret when available')->end()
                 ->integerNode('max_backlog_items')->defaultValue(500)->min(1)->end()
                 ->arrayNode('censor_keys')
                     ->scalarPrototype()->end()

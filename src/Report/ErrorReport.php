@@ -35,6 +35,8 @@ final class ErrorReport
         public ?int $openFrameIndex = 0,
         public ?string $trackingUuid = null,
         public ?string $sourcemapVersionId = null,
+        public ?string $traceId = null,
+        public ?string $spanId = null,
     ) {
     }
 
@@ -68,6 +70,8 @@ final class ErrorReport
         return [
             'resource' => $this->resource,
             'trackingUuid' => $this->trackingUuid,
+            'traceId' => $this->traceId,
+            'spanId' => $this->spanId,
             'seenAtUnixNano' => $this->seenAtUnixNano,
             'exceptionClass' => $this->exceptionClass,
             'message' => $this->message,

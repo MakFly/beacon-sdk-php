@@ -9,9 +9,13 @@ use KevStudios\Beacon\Config;
 use KevStudios\Beacon\Doctrine\DoctrineMiddleware;
 use KevStudios\Beacon\Http\Psr18TracingClient;
 use KevStudios\Beacon\Protocol;
+use KevStudios\Beacon\TelemetryContext;
 use KevStudios\Beacon\Symfony\EventSubscriber\ExceptionSubscriber;
 use KevStudios\Beacon\Symfony\EventSubscriber\RequestSpanSubscriber;
+use KevStudios\Beacon\Symfony\HashedUserContextProvider;
 use KevStudios\Beacon\Symfony\Monolog\BeaconHandler;
+use KevStudios\Beacon\Symfony\UserContextMiddleware;
+use KevStudios\Beacon\Symfony\UserContextProviderInterface;
 use KevStudios\Beacon\Transport\CurlSender;
 use KevStudios\Beacon\Transport\SenderInterface;
 use Symfony\Component\Config\Definition\Processor;
@@ -53,10 +57,34 @@ final class BeaconExtension implements ExtensionInterface
         $container->setDefinition('beacon.sender', $senderDef);
         $container->setAlias(SenderInterface::class, 'beacon.sender');
 
+        $contextDef = new Definition(TelemetryContext::class);
+        $container->setDefinition(TelemetryContext::class, $contextDef);
+
+        $userContext = null;
+        $userHashKey = $config['user_hash_key'];
+        if (($userHashKey === null || $userHashKey === '') && $container->hasParameter('kernel.secret')) {
+            $userHashKey = '%kernel.secret%';
+        }
+        if ($config['capture_user'] && \is_string($userHashKey) && $userHashKey !== '') {
+            $userProviderDef = new Definition(HashedUserContextProvider::class, [
+                '$tokenStorage' => new Reference('security.token_storage', ContainerInterface::NULL_ON_INVALID_REFERENCE),
+                '$hashKey' => $userHashKey,
+            ]);
+            $container->setDefinition(HashedUserContextProvider::class, $userProviderDef);
+            $container->setAlias(UserContextProviderInterface::class, HashedUserContextProvider::class);
+            $userContext = new Reference(UserContextProviderInterface::class);
+        }
+
         $beaconDef = new Definition(Beacon::class, [
             '$config' => new Reference('beacon.config'),
             '$sender' => new Reference('beacon.sender'),
+            '$context' => new Reference(TelemetryContext::class),
         ]);
+        if ($userContext !== null) {
+            $userMiddlewareDef = new Definition(UserContextMiddleware::class, ['$provider' => $userContext]);
+            $container->setDefinition(UserContextMiddleware::class, $userMiddlewareDef);
+            $beaconDef->addMethodCall('pushMiddleware', [new Reference(UserContextMiddleware::class)]);
+        }
         $beaconDef->setPublic(true);
         $container->setDefinition(Beacon::class, $beaconDef);
         $container->setAlias('beacon', Beacon::class)->setPublic(true);
@@ -75,6 +103,8 @@ final class BeaconExtension implements ExtensionInterface
         $reqSub = new Definition(RequestSpanSubscriber::class, [
             '$beacon' => new Reference(Beacon::class),
             '$router' => $router,
+            '$context' => new Reference(TelemetryContext::class),
+            '$userContext' => $userContext,
         ]);
         $reqSub->addTag('kernel.event_subscriber');
         $container->setDefinition(RequestSpanSubscriber::class, $reqSub);

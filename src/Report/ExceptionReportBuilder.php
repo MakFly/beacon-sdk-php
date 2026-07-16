@@ -21,7 +21,13 @@ final class ExceptionReportBuilder
     /**
      * @param array<string, mixed> $attributes
      */
-    public function build(\Throwable $throwable, bool $handled, array $attributes = []): ErrorReport
+    public function build(
+        \Throwable $throwable,
+        bool $handled,
+        array $attributes = [],
+        ?string $traceId = null,
+        ?string $spanId = null,
+    ): ErrorReport
     {
         $stacktrace = $this->mapper->map($throwable);
         $openFrameIndex = 0;
@@ -42,6 +48,8 @@ final class ExceptionReportBuilder
             applicationPath: $this->config->applicationPath,
             openFrameIndex: $openFrameIndex,
             trackingUuid: Ids::uuid(),
+            traceId: $traceId,
+            spanId: $spanId,
         );
         $report->stacktrace = $stacktrace;
         $report->attributes = $attributes;

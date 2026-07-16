@@ -25,6 +25,7 @@
     "suggest": {
         "symfony/http-kernel": "For the Symfony bundle integration (exception capture, request spans)",
         "symfony/routing": "For resolving Symfony route names to HTTP route templates",
+        "symfony/security-core": "For pseudonymous affected-user counts from authenticated requests",
         "symfony/messenger": "To trace queued message handling as entry points",
         "doctrine/dbal": "To capture db_query spans via the Beacon Doctrine middleware",
         "symfony/http-client": "To capture PSR-18 http_client spans automatically"
@@ -44,6 +45,7 @@
             "@php tests/smoke.php",
             "@php tests/doctrine.php",
             "@php tests/http_client.php",
+            "@php tests/symfony.php",
             "@php tests/setup.php"
         ]
     },

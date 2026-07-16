@@ -9,6 +9,7 @@ use KevStudios\Beacon\Protocol;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\ExceptionEvent;
+use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\Event\TerminateEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Routing\RouterInterface;
@@ -19,6 +20,9 @@ use Symfony\Component\Routing\RouterInterface;
  */
 final class ExceptionSubscriber implements EventSubscriberInterface
 {
+    private ?\Throwable $pendingThrowable = null;
+    private ?Request $pendingRequest = null;
+
     public function __construct(
         private readonly Beacon $beacon,
         private readonly ?RouterInterface $router = null,
@@ -29,27 +33,58 @@ final class ExceptionSubscriber implements EventSubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [
-            // High priority so we record before other listeners transform the exception.
+            // Remember before application listeners transform the exception, then classify it
+            // from the final HTTP response instead of guessing too early.
             KernelEvents::EXCEPTION => ['onException', 256],
-            KernelEvents::TERMINATE => ['onTerminate', -256],
+            KernelEvents::RESPONSE => ['onResponse', -512],
+            // Run before RequestSpanSubscriber so the no-response fallback marks the
+            // active request as failed while its correlation context still exists.
+            KernelEvents::TERMINATE => ['onTerminate', 0],
         ];
     }
 
     public function onException(ExceptionEvent $event): void
     {
-        $request = $event->getRequest();
+        if (!$event->isMainRequest()) {
+            return;
+        }
 
-        $this->beacon->captureException(
-            $event->getThrowable(),
-            handled: false,
-            attributes: $this->requestAttributes($request),
-        );
+        $this->pendingThrowable = $event->getThrowable();
+        $this->pendingRequest = $event->getRequest();
+    }
+
+    public function onResponse(ResponseEvent $event): void
+    {
+        if (!$event->isMainRequest() || $this->pendingThrowable === null || $this->pendingRequest === null) {
+            return;
+        }
+
+        $statusCode = $event->getResponse()->getStatusCode();
+        $this->capturePending(handled: $statusCode < 500, statusCode: $statusCode);
     }
 
     public function onTerminate(TerminateEvent $event): void
     {
+        if ($this->pendingThrowable !== null) {
+            $this->capturePending(handled: false, statusCode: 500);
+        }
         // Buffer is also flushed on shutdown, but terminate is the clean path under php-fpm.
         $this->beacon->flush();
+    }
+
+    private function capturePending(bool $handled, int $statusCode): void
+    {
+        if ($this->pendingThrowable === null || $this->pendingRequest === null) {
+            return;
+        }
+
+        $this->beacon->captureException(
+            $this->pendingThrowable,
+            handled: $handled,
+            attributes: $this->requestAttributes($this->pendingRequest) + ['http.response.status_code' => $statusCode],
+        );
+        $this->pendingThrowable = null;
+        $this->pendingRequest = null;
     }
 
     /**

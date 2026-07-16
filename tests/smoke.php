@@ -12,6 +12,9 @@ use KevStudios\Beacon\Config;
 use KevStudios\Beacon\Doctrine\SqlNormalizer;
 use KevStudios\Beacon\Propagation\TraceContext;
 use KevStudios\Beacon\Propagation\W3CPropagator;
+use KevStudios\Beacon\Symfony\HashedUserContextProvider;
+use KevStudios\Beacon\Symfony\UserContextMiddleware;
+use KevStudios\Beacon\TelemetryContext;
 use KevStudios\Beacon\Transport\CurlSender;
 use KevStudios\Beacon\Transport\SenderInterface;
 
@@ -145,6 +148,74 @@ $neverSample->captureSpans([[
 ]]);
 $neverSample->flush();
 check('trace sampling rate 0 drops every trace', ($sampledOut->captured['traces'] ?? []) === []);
+
+$errorTraceId = str_repeat('f', 32);
+$errorSpanId = str_repeat('e', 16);
+$correlation = new TelemetryContext();
+$correlation->begin($errorTraceId, $errorSpanId);
+$errorSampleOut = new CapturingSender();
+$errorSample = new Beacon(
+    new Config(resource: ['service.name' => 'error-sample-test'], tracesSampleRate: 0.0),
+    $errorSampleOut,
+    $correlation,
+);
+$errorSample->captureSpans([[
+    'traceId' => $errorTraceId, 'spanId' => str_repeat('d', 16), 'parentSpanId' => $errorSpanId, 'name' => 'SELECT users',
+    'startTimeUnixNano' => '1', 'endTimeUnixNano' => '2', 'attributes' => [], 'events' => [],
+]]);
+try {
+    throw new RuntimeException('force sampled failure');
+} catch (Throwable $e) {
+    $errorSample->captureException($e, handled: false);
+}
+$errorSample->captureSpans([[
+    'traceId' => $errorTraceId, 'spanId' => $errorSpanId, 'parentSpanId' => null, 'name' => 'GET /failed',
+    'startTimeUnixNano' => '1', 'endTimeUnixNano' => '3', 'status' => ['code' => 2], 'attributes' => [], 'events' => [],
+]], force: $correlation->failed(), complete: true);
+$errorSample->flush();
+$correlatedError = $errorSampleOut->captured['errors'][0] ?? [];
+check('unhandled error carries active trace id', ($correlatedError['traceId'] ?? null) === $errorTraceId);
+check('unhandled error carries active span id', ($correlatedError['spanId'] ?? null) === $errorSpanId);
+check('error trace bypasses normal sampling and retains pending child spans', \count($errorSampleOut->captured['traces'] ?? []) === 2);
+
+$user = new class {
+    public function getUserIdentifier(): string
+    {
+        return 'person@example.test';
+    }
+};
+$tokenStorage = new class($user) {
+    public function __construct(private readonly object $user)
+    {
+    }
+
+    public function getToken(): object
+    {
+        return new class($this->user) {
+            public function __construct(private readonly object $user)
+            {
+            }
+
+            public function getUser(): object
+            {
+                return $this->user;
+            }
+        };
+    }
+};
+$userProvider = new HashedUserContextProvider($tokenStorage, 'test-hash-key');
+$hashedUserId = $userProvider->userId();
+check('authenticated user id is pseudonymized', \is_string($hashedUserId) && str_starts_with($hashedUserId, 'usr_') && !str_contains($hashedUserId, 'person@'));
+$userOut = new CapturingSender();
+$userBeacon = new Beacon(new Config(resource: ['service.name' => 'user-test']), $userOut);
+$userBeacon->pushMiddleware(new UserContextMiddleware($userProvider));
+try {
+    throw new RuntimeException('identified failure');
+} catch (Throwable $e) {
+    $userBeacon->captureException($e);
+}
+$userBeacon->flush();
+check('user middleware attaches only the pseudonymous id', ($userOut->captured['errors'][0]['attributes']['user.id'] ?? null) === $hashedUserId);
 
 $boundedOut = new CapturingSender();
 $bounded = new Beacon(new Config(resource: ['service.name' => 'bounded-test'], maxBacklogItems: 2), $boundedOut);

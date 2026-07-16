@@ -46,6 +46,16 @@ Unhandled kernel exceptions are captured automatically via `ExceptionSubscriber`
 The buffer flushes on `kernel.terminate` (post-response). The transport swallows
 every failure — telemetry never breaks the host app.
 
+HTTP exceptions are classified from the final response status: `4xx` occurrences stay
+handled, while `5xx` occurrences are unhandled and force retention of their complete
+request trace even when normal trace sampling would discard it. Errors carry the active
+`traceId` and `spanId`, so the dashboard can open the exact failing trace and span.
+
+When Symfony Security is available, authenticated users are counted through a stable
+HMAC identifier (`usr_…`). The raw login/email is never sent. This is enabled by default
+and uses `%kernel.secret%`; set `capture_user: false` to disable it or `user_hash_key` to
+use a dedicated rotation-controlled key.
+
 Transport attempts time out after 2 seconds and retry network failures, `408`, `429`
 and `5xx` with exponential jitter while honoring `Retry-After`. Failed batches remain
 in a bounded in-memory backlog (`max_backlog_items`, default 500). Trace sampling is
@@ -85,6 +95,8 @@ beacon:
     application_path: '%kernel.project_dir%'      # optional
     collect_arguments: false                      # opt-in: may contain sensitive values
     traces_sample_rate: 1.0                       # 0.0–1.0
+    capture_user: true                            # pseudonymous affected-user identity
+    user_hash_key: ~                              # defaults to %kernel.secret%
     max_backlog_items: 500                        # bounded in-memory retry backlog
     censor_keys:                                  # scrubbed from attributes
         - password

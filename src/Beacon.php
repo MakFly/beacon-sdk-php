@@ -35,11 +35,15 @@ final class Beacon
     /** @var list<array<string, mixed>> */
     private array $logBuffer = [];
 
+    /** @var array<string, list<array<string, mixed>>> Unsampled spans held until the root outcome is known. */
+    private array $pendingTraceBuffer = [];
+
     private bool $shutdownRegistered = false;
 
     public function __construct(
         private readonly Config $config,
         private readonly SenderInterface $sender,
+        private readonly ?TelemetryContext $context = null,
     ) {
         $this->builder = new ExceptionReportBuilder($config, new StackTraceMapper($config));
         $this->redactor = new Redactor($config->censorKeys);
@@ -63,7 +67,16 @@ final class Beacon
         if (!$this->isEnabled()) {
             return;
         }
-        $report = $this->builder->build($throwable, $handled, $attributes);
+        if (!$handled) {
+            $this->context?->markFailed();
+        }
+        $report = $this->builder->build(
+            $throwable,
+            $handled,
+            $attributes,
+            $this->context?->traceId(),
+            $this->context?->spanId(),
+        );
         $report = $this->runPipeline($report);
         $this->appendBounded($this->errorBuffer, $report->toArray());
         $this->registerShutdown();
@@ -74,15 +87,48 @@ final class Beacon
      *
      * @param list<array<string, mixed>> $spans
      */
-    public function captureSpans(array $spans, string $scopeName = 'beacon-sdk-php', string $scopeVersion = Protocol::SDK_VERSION): void
+    public function captureSpans(
+        array $spans,
+        string $scopeName = 'beacon-sdk-php',
+        string $scopeVersion = Protocol::SDK_VERSION,
+        bool $force = false,
+        bool $complete = false,
+    ): void
     {
-        if (!$this->isEnabled() || $spans === [] || !$this->shouldSample($spans)) {
+        if (!$this->isEnabled() || $spans === []) {
             return;
         }
-        $this->appendBounded($this->spanBuffer, [
+        $payload = [
             'resource' => $this->redactor->redact($this->config->resource),
             'scopes' => [['name' => $scopeName, 'version' => $scopeVersion, 'spans' => $this->redactor->redact($spans)]],
-        ]);
+        ];
+        $traceId = $spans[0]['traceId'] ?? null;
+
+        if ($force) {
+            if (\is_string($traceId)) {
+                foreach ($this->pendingTraceBuffer[$traceId] ?? [] as $pending) {
+                    $this->appendBounded($this->spanBuffer, $pending);
+                }
+                unset($this->pendingTraceBuffer[$traceId]);
+            }
+            $this->appendBounded($this->spanBuffer, $payload);
+            $this->registerShutdown();
+
+            return;
+        }
+
+        if ($this->shouldSample($spans)) {
+            $this->appendBounded($this->spanBuffer, $payload);
+            $this->registerShutdown();
+
+            return;
+        }
+
+        if (\is_string($traceId) && !$complete) {
+            $this->appendPendingTrace($traceId, $payload);
+        } elseif (\is_string($traceId)) {
+            unset($this->pendingTraceBuffer[$traceId]);
+        }
         $this->registerShutdown();
     }
 
@@ -146,6 +192,21 @@ final class Beacon
             array_shift($buffer);
         }
         $buffer[] = $payload;
+    }
+
+    /** @param array<string,mixed> $payload */
+    private function appendPendingTrace(string $traceId, array $payload): void
+    {
+        $maximum = max(1, $this->config->maxBacklogItems);
+        if (!isset($this->pendingTraceBuffer[$traceId]) && \count($this->pendingTraceBuffer) >= $maximum) {
+            array_shift($this->pendingTraceBuffer);
+        }
+        $pending = $this->pendingTraceBuffer[$traceId] ?? [];
+        if (\count($pending) >= $maximum) {
+            array_shift($pending);
+        }
+        $pending[] = $payload;
+        $this->pendingTraceBuffer[$traceId] = $pending;
     }
 
     /** @param list<array<string, mixed>> $spans */
