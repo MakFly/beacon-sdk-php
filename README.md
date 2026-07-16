@@ -46,6 +46,13 @@ Unhandled kernel exceptions are captured automatically via `ExceptionSubscriber`
 The buffer flushes on `kernel.terminate` (post-response). The transport swallows
 every failure — telemetry never breaks the host app.
 
+Handled exceptions passed to Monolog at `ERROR` or above are also captured automatically
+as issues, including failures logged by long-running Messenger workers. The SDK flushes
+that exception immediately and deduplicates it when the same `Throwable` is already owned
+by the kernel exception subscriber. Set `capture_monolog_exceptions: false` to disable this
+integration. Regular application logs must still be written as JSON to stdout/stderr and
+collected out of process; the deprecated `beacon.monolog_handler` is not used by default.
+
 HTTP exceptions are classified from the final response status: `4xx` occurrences stay
 handled, while `5xx` occurrences are unhandled and force retention of their complete
 request trace even when normal trace sampling would discard it. Errors carry the active
@@ -96,6 +103,7 @@ beacon:
     collect_arguments: false                      # opt-in: may contain sensitive values
     traces_sample_rate: 1.0                       # 0.0–1.0
     capture_user: true                            # pseudonymous affected-user identity
+    capture_monolog_exceptions: true              # handled Throwable objects logged at ERROR+
     user_hash_key: ~                              # defaults to %kernel.secret%
     max_backlog_items: 500                        # bounded in-memory retry backlog
     censor_keys:                                  # scrubbed from attributes

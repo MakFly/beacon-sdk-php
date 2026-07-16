@@ -6,6 +6,7 @@ namespace KevStudios\Beacon\Symfony\EventSubscriber;
 
 use KevStudios\Beacon\Beacon;
 use KevStudios\Beacon\Protocol;
+use KevStudios\Beacon\Symfony\ExceptionCaptureRegistry;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\ExceptionEvent;
@@ -22,12 +23,15 @@ final class ExceptionSubscriber implements EventSubscriberInterface
 {
     private ?\Throwable $pendingThrowable = null;
     private ?Request $pendingRequest = null;
+    private readonly ExceptionCaptureRegistry $captureRegistry;
 
     public function __construct(
         private readonly Beacon $beacon,
         private readonly ?RouterInterface $router = null,
+        ?ExceptionCaptureRegistry $captureRegistry = null,
     )
     {
+        $this->captureRegistry = $captureRegistry ?? new ExceptionCaptureRegistry();
     }
 
     public static function getSubscribedEvents(): array
@@ -50,6 +54,7 @@ final class ExceptionSubscriber implements EventSubscriberInterface
         }
 
         $this->pendingThrowable = $event->getThrowable();
+        $this->captureRegistry->markKernelException($this->pendingThrowable);
         $this->pendingRequest = $event->getRequest();
     }
 

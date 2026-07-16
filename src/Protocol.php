@@ -11,7 +11,7 @@ namespace KevStudios\Beacon;
 final class Protocol
 {
     public const VERSION = 'v0';
-    public const SDK_VERSION = '0.7.0';
+    public const SDK_VERSION = '0.7.1';
 
     // Entry point attribute keys.
     public const ATTR_ENTRY_POINT_TYPE = 'beacon.entry_point.type';

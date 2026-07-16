@@ -119,6 +119,8 @@ function createBeaconYaml(string $root): int
         '    collect_arguments: false',
         '    # Fraction of requests that generate trace spans (0.0 = none, 1.0 = all).',
         '    traces_sample_rate: 1.0',
+        '    # Capture handled Throwables logged at ERROR+ (including Messenger workers).',
+        '    capture_monolog_exceptions: true',
         '    # Attribute keys scrubbed to [CENSORED] before sending (case-insensitive).',
         '    censor_keys:',
         '        - password',

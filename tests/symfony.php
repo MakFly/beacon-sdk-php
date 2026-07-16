@@ -7,11 +7,15 @@ use KevStudios\Beacon\Config;
 use KevStudios\Beacon\Symfony\EventSubscriber\ExceptionSubscriber;
 use KevStudios\Beacon\Symfony\EventSubscriber\RequestSpanSubscriber;
 use KevStudios\Beacon\Symfony\DependencyInjection\BeaconExtension;
+use KevStudios\Beacon\Symfony\ExceptionCaptureRegistry;
+use KevStudios\Beacon\Symfony\Monolog\ExceptionMonologHandler;
 use KevStudios\Beacon\Symfony\UserContextProviderInterface;
 use KevStudios\Beacon\TelemetryContext;
 use KevStudios\Beacon\Transport\SenderInterface;
+use Monolog\Logger;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
+use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ExceptionEvent;
@@ -116,6 +120,62 @@ $fallbackError = $fallbackSender->captured['errors'][0] ?? [];
 $fallbackRoot = $fallbackSender->captured['traces'][0]['scopes'][0]['spans'][0] ?? [];
 symfonyCheck('no-response fallback remains correlated and forces its root trace', ($fallbackError['traceId'] ?? null) === ($fallbackRoot['traceId'] ?? null));
 
+$loggedSender = new SymfonyCapturingSender();
+$loggedBeacon = new Beacon(new Config(resource: ['service.name' => 'symfony-test']), $loggedSender);
+$loggedRegistry = new ExceptionCaptureRegistry();
+$loggedHandler = new ExceptionMonologHandler($loggedBeacon, $loggedRegistry);
+$logger = new Logger('messenger');
+$logger->pushHandler($loggedHandler);
+$loggedThrowable = new RuntimeException('worker failure');
+$logger->error('Message handling failed', ['nested' => ['exception' => $loggedThrowable], 'job_id' => 42]);
+$logger->error('Message handling failed again', ['exception' => $loggedThrowable]);
+$loggedError = $loggedSender->captured['errors'][0] ?? [];
+symfonyCheck('Monolog ERROR Throwable is captured as a handled issue', ($loggedError['handled'] ?? null) === true);
+symfonyCheck('Monolog exception is flushed immediately for workers', \count($loggedSender->captured['errors'] ?? []) === 1);
+symfonyCheck('the same logged Throwable is captured only once', \count($loggedSender->captured['errors'] ?? []) === 1);
+symfonyCheck('Monolog issue keeps useful scalar context', ($loggedError['attributes']['context.job_id'] ?? null) === 42);
+
+$dedupeSender = new SymfonyCapturingSender();
+$dedupeBeacon = new Beacon(new Config(resource: ['service.name' => 'symfony-test']), $dedupeSender);
+$dedupeRegistry = new ExceptionCaptureRegistry();
+$dedupeSubscriber = new ExceptionSubscriber($dedupeBeacon, captureRegistry: $dedupeRegistry);
+$dedupeLogger = new Logger('app');
+$dedupeLogger->pushHandler(new ExceptionMonologHandler($dedupeBeacon, $dedupeRegistry));
+$kernelThrowable = new RuntimeException('kernel failure');
+$dedupeRequest = Request::create('/deduplicated', 'GET');
+$dedupeResponse = new Response('', 500);
+$dedupeSubscriber->onException(new ExceptionEvent($kernel, $dedupeRequest, HttpKernelInterface::MAIN_REQUEST, $kernelThrowable));
+$dedupeLogger->critical('Unhandled exception', ['exception' => $kernelThrowable]);
+$dedupeSubscriber->onResponse(new ResponseEvent($kernel, $dedupeRequest, HttpKernelInterface::MAIN_REQUEST, $dedupeResponse));
+$dedupeSubscriber->onTerminate(new TerminateEvent($kernel, $dedupeRequest, $dedupeResponse));
+symfonyCheck('kernel and Monolog paths deduplicate the same Throwable', \count($dedupeSender->captured['errors'] ?? []) === 1);
+symfonyCheck('kernel subscriber remains owner of the deduplicated issue', ($dedupeSender->captured['errors'][0]['handled'] ?? null) === false);
+
+$disabledSender = new SymfonyCapturingSender();
+$disabledBeacon = new Beacon(new Config(resource: ['service.name' => 'symfony-test']), $disabledSender);
+$disabledLogger = new Logger('app');
+$disabledLogger->pushHandler(new ExceptionMonologHandler($disabledBeacon, new ExceptionCaptureRegistry(), enabled: false));
+$disabledLogger->error('Ignored handled exception', ['exception' => new RuntimeException('disabled')]);
+symfonyCheck('Monolog exception capture can be disabled', ($disabledSender->captured['errors'] ?? []) === []);
+
+$prependContainer = new ContainerBuilder();
+$prependContainer->registerExtension(new class extends Extension {
+    public function load(array $configs, ContainerBuilder $container): void
+    {
+    }
+
+    public function getAlias(): string
+    {
+        return 'monolog';
+    }
+});
+(new BeaconExtension())->prepend($prependContainer);
+$prependedMonolog = $prependContainer->getExtensionConfig('monolog');
+symfonyCheck(
+    'Symfony bundle automatically wires the exception-only Monolog handler',
+    ($prependedMonolog[0]['handlers']['beacon_exception_issues']['id'] ?? null) === 'beacon.exception_monolog_handler',
+);
+
 $container = new ContainerBuilder();
 $container->setParameter('kernel.environment', 'test');
 $container->setParameter('kernel.project_dir', __DIR__);
@@ -123,12 +183,14 @@ $container->setParameter('kernel.secret', 'integration-secret');
 $container->setDefinition('security.token_storage', new Definition(SymfonyTestTokenStorage::class));
 $container->setDefinition(\Symfony\Component\HttpClient\Psr18Client::class, new Definition(\Symfony\Component\HttpClient\Psr18Client::class));
 (new BeaconExtension())->load([[]], $container);
+$container->getAlias('beacon.exception_monolog_handler')->setPublic(true);
 $container->getAlias(UserContextProviderInterface::class)->setPublic(true);
 $container->compile();
 $userProvider = $container->get(UserContextProviderInterface::class);
 $expectedUserId = 'usr_'.hash_hmac('sha256', 'private@example.test', 'integration-secret');
 symfonyCheck('Symfony DI enables pseudonymous user context from kernel.secret', $userProvider->userId() === $expectedUserId);
 symfonyCheck('Symfony DI never exposes the raw authenticated identifier', !str_contains($userProvider->userId() ?? '', 'private@example.test'));
+symfonyCheck('Symfony DI exposes the official exception Monolog handler', $container->get('beacon.exception_monolog_handler') instanceof ExceptionMonologHandler);
 
 echo $failures === 0 ? "\nALL PASS\n" : "\n$failures FAILURES\n";
 exit($failures === 0 ? 0 : 1);

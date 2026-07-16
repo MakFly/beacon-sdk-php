@@ -10,10 +10,12 @@ use KevStudios\Beacon\Doctrine\DoctrineMiddleware;
 use KevStudios\Beacon\Http\Psr18TracingClient;
 use KevStudios\Beacon\Protocol;
 use KevStudios\Beacon\TelemetryContext;
+use KevStudios\Beacon\Symfony\ExceptionCaptureRegistry;
 use KevStudios\Beacon\Symfony\EventSubscriber\ExceptionSubscriber;
 use KevStudios\Beacon\Symfony\EventSubscriber\RequestSpanSubscriber;
 use KevStudios\Beacon\Symfony\HashedUserContextProvider;
 use KevStudios\Beacon\Symfony\Monolog\BeaconHandler;
+use KevStudios\Beacon\Symfony\Monolog\ExceptionMonologHandler;
 use KevStudios\Beacon\Symfony\UserContextMiddleware;
 use KevStudios\Beacon\Symfony\UserContextProviderInterface;
 use KevStudios\Beacon\Transport\CurlSender;
@@ -23,10 +25,31 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
+use Symfony\Component\DependencyInjection\Extension\PrependExtensionInterface;
 use Symfony\Component\DependencyInjection\Reference;
 
-final class BeaconExtension implements ExtensionInterface
+final class BeaconExtension implements ExtensionInterface, PrependExtensionInterface
 {
+    public function prepend(ContainerBuilder $container): void
+    {
+        if (!$container->hasExtension('monolog')) {
+            return;
+        }
+
+        // Prepend a low-priority default. Applications can override the handler with
+        // the same name in their own Monolog configuration when needed.
+        $container->prependExtensionConfig('monolog', [
+            'handlers' => [
+                'beacon_exception_issues' => [
+                    'type' => 'service',
+                    'id' => 'beacon.exception_monolog_handler',
+                    'level' => 'error',
+                    'channels' => ['!event', '!doctrine', '!deprecation'],
+                ],
+            ],
+        ]);
+    }
+
     public function load(array $configs, ContainerBuilder $container): void
     {
         $config = (new Processor())->processConfiguration(new Configuration(), $configs);
@@ -59,6 +82,9 @@ final class BeaconExtension implements ExtensionInterface
 
         $contextDef = new Definition(TelemetryContext::class);
         $container->setDefinition(TelemetryContext::class, $contextDef);
+
+        $captureRegistryDef = new Definition(ExceptionCaptureRegistry::class);
+        $container->setDefinition(ExceptionCaptureRegistry::class, $captureRegistryDef);
 
         $userContext = null;
         $userHashKey = $config['user_hash_key'];
@@ -95,6 +121,7 @@ final class BeaconExtension implements ExtensionInterface
         $exSub = new Definition(ExceptionSubscriber::class, [
             '$beacon' => new Reference(Beacon::class),
             '$router' => $router,
+            '$captureRegistry' => new Reference(ExceptionCaptureRegistry::class),
         ]);
         $exSub->addTag('kernel.event_subscriber');
         $container->setDefinition(ExceptionSubscriber::class, $exSub);
@@ -133,6 +160,16 @@ final class BeaconExtension implements ExtensionInterface
 
         // Monolog handler — forward WARNING+ logs to the ingester.
         if (class_exists(\Monolog\Handler\AbstractProcessingHandler::class)) {
+            $exceptionHandlerDef = new Definition(ExceptionMonologHandler::class, [
+                '$beacon' => new Reference(Beacon::class),
+                '$registry' => new Reference(ExceptionCaptureRegistry::class),
+                '$enabled' => $config['capture_monolog_exceptions'],
+            ]);
+            $container->setDefinition(ExceptionMonologHandler::class, $exceptionHandlerDef);
+            $container->setAlias('beacon.exception_monolog_handler', ExceptionMonologHandler::class);
+
+            // Legacy log-forwarding handler. Kept for backward compatibility only;
+            // new applications should ship JSON logs out of process.
             $handlerDef = new Definition(BeaconHandler::class, [
                 '$beacon' => new Reference(Beacon::class),
             ]);

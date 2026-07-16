@@ -24,6 +24,7 @@ $ok = $exitCode === 0
     && is_string($env) && str_contains($env, $expected)
     && is_string($example) && str_contains($example, $expected)
     && is_string($yaml) && str_contains($yaml, "endpoint: '%env(BEACON_ENDPOINT)%'")
+    && str_contains($yaml, 'capture_monolog_exceptions: true')
     && is_string($bundles) && str_contains($bundles, 'BeaconBundle::class');
 
 removeTree($root);
